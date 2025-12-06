@@ -1,0 +1,226 @@
+import random
+
+
+# --- MODULARIZED RNG FUNCTION ---
+# This addresses the "RNG" requirement.
+# We can use this one function for all probabilistic events.
+def does_event_happen(probability):
+    """
+    Modularized RNG function.
+    Returns True if a random float is less than the given probability.
+    """
+    return random.random() < probability
+
+
+# --- PARAMETERS ---
+# We've added more parameters for a more detailed simulation.
+
+# How many times to run the simulation
+NUM_SIMULATIONS = 100000
+
+# Shooting Percentages
+MY_3P_PCT = 0.35  # Our "hard 3" percentage
+MY_2P_PCT = 0.75  # Our "easy 2" percentage
+
+# Opponent Percentages
+OPP_FT_PCT = 0.55  # Opponent's free-throw percentage (the player we foul)
+
+# Rebounding
+# Prob. *we* get the defensive rebound after an opponent's *missed* FT
+PROB_WE_GET_DEF_REB_ON_FT = 0.80  # (so, 20% chance they get the O-Reb)
+
+# Game State
+PROB_WIN_IN_OT = 0.50  # 50/50 chance in OT
+
+# Time (in seconds)
+# This is a simplification. We assume fixed time for actions.
+TIME_FOR_2P_SHOT = 5.0  # Time for our initial "easy two"
+TIME_FOR_FOUL = 2.0  # Time it takes to commit a foul
+TIME_FOR_LAST_SHOT = 8.0  # Time for us to get a final shot off
+
+
+# --- STRATEGY 1: TAKE THE 3-POINTER ---
+def simulate_strategy_take_3():
+    """
+    Simulates one trial of Strategy 1: Take a "hard 3" immediately.
+    Returns: (did_win, points_scored)
+    """
+
+    # Simulate the 3-point shot
+    if does_event_happen(MY_3P_PCT):
+        # We made the 3! Game is tied and goes to OT.
+        # Simulate Overtime
+        if does_event_happen(PROB_WIN_IN_OT):
+            return (True, 3)  # Won in OT
+        else:
+            return (False, 3)  # Lost in OT
+    else:
+        # We missed the 3. Game over.
+        return (False, 0)
+
+
+# --- STRATEGY 2: TAKE THE "EASY TWO" AND FOUL ---
+def simulate_strategy_take_2_and_foul():
+    """
+    Simulates the complex "easy two" strategy.
+    This function contains the "loop structure" requirement.
+    Returns: (did_win, points_scored_by_us)
+    """
+
+    time_left = 30.0
+    points_scored_by_us = 0
+
+    # --- Step 1: Attempt the "easy two" ---
+    time_left -= TIME_FOR_2P_SHOT  # e.g., 30 -> 25 seconds
+
+    if not does_event_happen(MY_2P_PCT):
+        # We missed the easy two. Game is over.
+        return (False, 0)
+
+    # We MADE the easy two.
+    points_scored_by_us = 2
+    # GAME STATE: Down 1, 25 seconds left. We must foul.
+
+    # --- Step 2: Enter the "Foul Loop" ---
+    # This loop continues as long as we have time and are losing.
+    while time_left > 0:
+
+        # --- A: Commit the foul ---
+        time_left -= TIME_FOR_FOUL  # e.g., 25 -> 23 seconds
+        if time_left < 0:
+            # We took too long to foul. Game over.
+            return (False, points_scored_by_us)
+
+        # --- B: Opponent shoots 2 FTs ---
+        ft_1_made = does_event_happen(OPP_FT_PCT)
+        ft_2_made = does_event_happen(OPP_FT_PCT)
+
+        # --- C: Analyze FT Outcomes ---
+
+        if ft_1_made and ft_2_made:
+            # --- Made Both (Score: Down 3) ---
+            # We get the ball, need a 3 to tie.
+            time_left -= TIME_FOR_LAST_SHOT
+            if time_left < 0:
+                return (False, points_scored_by_us)  # Ran out of time
+
+            # Run the "Take a 3" logic
+            if does_event_happen(MY_3P_PCT):
+                points_scored_by_us += 3  # We tied!
+                # Go to OT
+                if does_event_happen(PROB_WIN_IN_OT):
+                    return (True, points_scored_by_us)
+                else:
+                    return (False, points_scored_by_us)
+            else:
+                return (False, points_scored_by_us)  # Missed the tying 3
+
+        elif ft_1_made or ft_2_made:
+            # --- Made One (Score: Down 2) ---
+            # We get the ball, need a 2 to tie.
+            time_left -= TIME_FOR_LAST_SHOT
+            if time_left < 0:
+                return (False, points_scored_by_us)
+
+            if does_event_happen(MY_2P_PCT):
+                points_scored_by_us += 2  # We tied!
+                # Go to OT
+                if does_event_happen(PROB_WIN_IN_OT):
+                    return (True, points_scored_by_us)
+                else:
+                    return (False, points_scored_by_us)
+            else:
+                return (False, points_scored_by_us)  # Missed the tying 2
+
+        else:
+            # --- Missed Both (Score: Still Down 1) ---
+            # Now we must rebound.
+            if does_event_happen(PROB_WE_GET_DEF_REB_ON_FT):
+                # We got the rebound!
+                # We have the ball, down 1, with time for one shot.
+                time_left -= TIME_FOR_LAST_SHOT
+                if time_left < 0:
+                    return (False, points_scored_by_us)
+
+                # We go for the WIN with a 2-pointer.
+                if does_event_happen(MY_2P_PCT):
+                    points_scored_by_us += 2
+                    return (True, points_scored_by_us)  # We win!
+                else:
+                    return (False, points_scored_by_us)  # Missed game winner
+            else:
+                # They got the offensive rebound.
+                # We are still down 1.
+                # The 'while' loop repeats: we must foul again.
+                pass
+
+                # If the while loop ends (time_left hits 0), we lost.
+    return (False, points_scored_by_us)
+
+
+# --- MAIN SIMULATION ---
+def main():
+    """
+    Main function to run the full Monte Carlo simulation.
+    """
+    print("🏀 Basketball Strategy Simulation (Refined) 🏀")
+    print(f"Running {NUM_SIMULATIONS:,} trials...")
+    print("--- Parameters ---")
+    print(f"  My 'Hard 3' Pct:    {MY_3P_PCT * 100:.1f}%")
+    print(f"  My 'Easy 2' Pct:    {MY_2P_PCT * 100:.1f}%")
+    print(f"  Opponent FT Pct:    {OPP_FT_PCT * 100:.1f}%")
+    print(f"  My Def. Reb Pct:  {PROB_WE_GET_DEF_REB_ON_FT * 100:.1f}%")
+    print(f"  Win Pct in OT:      {PROB_WIN_IN_OT * 100:.1f}%")
+    print("--------------------")
+
+    # Initialize counters
+    wins_strategy_1 = 0
+    points_strategy_1 = 0
+    wins_strategy_2 = 0
+    points_strategy_2 = 0
+
+    # Run the simulation loop
+    for _ in range(NUM_SIMULATIONS):
+        # --- Run Strategy 1 ---
+        (win_1, points_1) = simulate_strategy_take_3()
+        if win_1:
+            wins_strategy_1 += 1
+        points_strategy_1 += points_1
+
+        # --- Run Strategy 2 ---
+        (win_2, points_2) = simulate_strategy_take_2_and_foul()
+        if win_2:
+            wins_strategy_2 += 1
+        points_strategy_2 += points_2
+
+    # --- Calculate and display results ---
+
+    # Strategy 1 Results
+    win_pct_1 = (wins_strategy_1 / NUM_SIMULATIONS) * 100
+    avg_pts_1 = points_strategy_1 / NUM_SIMULATIONS
+
+    # Strategy 2 Results
+    win_pct_2 = (wins_strategy_2 / NUM_SIMULATIONS) * 100
+    avg_pts_2 = points_strategy_2 / NUM_SIMULATIONS
+
+    print("\n--- RESULTS ---")
+    print("\nStrategy 1: Take the 'Hard 3' Immediately")
+    print(f"  Win Percentage:   {win_pct_1:.2f}%")
+    print(f"  Avg. Points Scored: {avg_pts_1:.2f}")
+
+    print("\nStrategy 2: Take the 'Easy 2' and Foul")
+    print(f"  Win Percentage:   {win_pct_2:.2f}%")
+    print(f"  Avg. Points Scored: {avg_pts_2:.2f}")
+
+    print("\n--- CONCLUSION ---")
+    if win_pct_1 > win_pct_2:
+        print("Based on these parameters, 'Take the Hard 3' is the better strategy.")
+    elif win_pct_2 > win_pct_1:
+        print("Based on these parameters, 'Take the Easy 2 and Foul' is the better strategy.")
+    else:
+        print("Both strategies have an identical chance of winning.")
+
+
+# Run the program
+if __name__ == "__main__":
+    main()
